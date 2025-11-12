@@ -205,11 +205,11 @@ Du har nå deployet og håndtert en statisk nettside på AWS ved hjelp av Terraf
 
 ---
 
-# Part 2: Avansert Terraform - Modules, Remote State og CI/CD
+# Part 2: Avansert Terraform - Moduler, Remote State og CI/CD
 
 I denne delen skal vi utvide infrastrukturen med mer avanserte Terraform-konsepter. Du vil lære om:
 - Remote state management for team-samarbeid
-- Terraform modules for gjenbrukbar infrastruktur
+- Terraform-moduler for gjenbrukbar infrastruktur
 - CloudFront CDN for global distribusjon
 - Automatisering med GitHub Actions
 
@@ -217,7 +217,7 @@ I denne delen skal vi utvide infrastrukturen med mer avanserte Terraform-konsept
 
 ---
 
-## Del 1: Remote State Management (15 min)
+## Del 1: Remote State Management
 
 ### Hvorfor Remote State?
 
@@ -319,17 +319,17 @@ Terraform vil spørre om du vil kopiere eksisterende state til det nye backend. 
 
 ---
 
-## Del 2: Terraform Modules - Gjenbrukbar Infrastruktur (45 min)
+## Del 2: Terraform-moduler - Gjenbrukbar Infrastruktur
 
-### Hva er Modules?
+### Hva er moduler?
 
-Modules er Terraforms måte å pakke og gjenbruke infrastruktur-kode på. I stedet for å copy-paste kode, lager vi en module som kan brukes flere steder med ulike konfigurasjoner.
+Moduler er Terraforms måte å pakke og gjenbruke infrastruktur-kode på. I stedet for å copy-paste kode, lager vi en modul som kan brukes flere steder med ulike konfigurasjoner.
 
-**Analogi**: En module er som en funksjon i programmering - den tar inputs, gjør noe, og returnerer outputs.
+**Analogi**: En modul er som en funksjon i programmering - den tar inputs, gjør noe, og returnerer outputs.
 
-### Del A: Guided - Lage Basic Module Structure (20 min)
+### Del A: Lag en modul
 
-#### Steg 1: Opprett Module-struktur
+#### Steg 1: Opprett modul-struktur
 
 Lag følgende mappestruktur:
 
@@ -348,7 +348,9 @@ touch modules/s3-website/variables.tf
 touch modules/s3-website/outputs.tf
 ```
 
-#### Steg 2: Definer Module Variables
+#### Steg 2: Definer variabler for modulen
+
+Variabler er det som gjør moduler gjenbrukbare - de lar deg bruke samme modul med ulike verdier for forskjellige miljøer eller brukstilfeller. Uten variabler ville modulen alltid opprette de samme ressursene med de samme verdiene, noe som ville gjøre den ubrukelig for gjenbruk.
 
 **Fyll inn** `modules/s3-website/variables.tf`:
 
@@ -370,7 +372,7 @@ variable "website_files_path" {
 }
 ```
 
-#### Steg 3: Flytt Ressurser til Module
+#### Steg 3: Flytt Ressurser til modulen
 
 **Flytt S3-ressursene** fra root `main.tf` til `modules/s3-website/main.tf`:
 
@@ -380,7 +382,7 @@ variable "website_files_path" {
 
 **Hint**: I modulen skal du bruke `var.bucket_name` i stedet for `local.website_bucket_name`.
 
-#### Steg 4: Definer Module Outputs
+#### Steg 4: Definer outputs for modulen
 
 **Fyll inn** `modules/s3-website/outputs.tf`:
 
@@ -404,13 +406,108 @@ output "bucket_arn" {
 data "aws_region" "current" {}
 ```
 
-### Del B: Selvstendig - Bruk Modulen (25 min)
+### ⚠️ Viktig: Før du bruker modulen - State Management
 
-Nå skal **du selv** refaktorere root `main.tf` til å bruke modulen du nettopp laget.
+Før vi refaktorerer koden til å bruke modulen, må vi håndtere et kritisk problem:
+
+**Når du flytter ressurser fra root til en modul, endrer adressene seg:**
+- Gammel adresse: `aws_s3_bucket.website`
+- Ny adresse: `module.s3_website.aws_s3_bucket.website`
+
+Terraform vil tro at du vil:
+1. Slette de gamle ressursene
+2. Opprette nye ressurser med samme konfigurasjon
+
+**Resultat**: Din S3 bucket blir slettet og gjenskapt!
+
+### Velg din vei: Red Pill eller Blue Pill?
+
+#### Blue Pill - Den enkle veien
+
+**"Ignorance is bliss"** - Start på nytt med modulen.
+
+1. **Tøm bucketen**:
+```bash
+aws s3 rm s3://ditt-bucket-navn --recursive
+```
+
+2. **Destroy eksisterende infrastruktur**:
+```bash
+terraform destroy
+```
+
+3. **Fortsett til Del B** og bygg opp igjen med modul
+
+**Fordel**: Enkelt og greit
+**Ulempe**: Du mister eksisterende data (ok for demo)
+
+---
+
+#### Red Pill - Power Move
+
+**"I want to see how deep the rabbit hole goes"** - Lær Terraform state management!
+
+Terraform har en innebygd måte å håndtere refactoring: `moved` blocks.
+
+**Steg 1**: Før du endrer `main.tf`, legg til `moved` blocks som forteller Terraform hvor ressursene skal flyttes:
+
+```hcl
+# Legg til i main.tf FØR du sletter de gamle ressursene
+moved {
+  from = aws_s3_bucket.website
+  to   = module.s3_website.aws_s3_bucket.website
+}
+
+moved {
+  from = aws_s3_bucket_website_configuration.website
+  to   = module.s3_website.aws_s3_bucket_website_configuration.website
+}
+
+moved {
+  from = aws_s3_bucket_public_access_block.website
+  to   = module.s3_website.aws_s3_bucket_public_access_block.website
+}
+
+moved {
+  from = aws_s3_bucket_policy.website
+  to   = module.s3_website.aws_s3_bucket_policy.website
+}
+
+# Legg til moved blocks for alle S3-ressursene du har
+```
+
+**Steg 2**: Refaktorer til modul (se Del B nedenfor)
+
+**Steg 3**: Kjør plan og se magien:
+```bash
+terraform plan
+```
+
+Terraform vil si: "These objects moved - no changes needed"
+
+**Steg 4**: Apply for å oppdatere state:
+```bash
+terraform apply
+```
+
+**Steg 5**: Når alt fungerer, kan du fjerne `moved` blocks (de trengs ikke lenger)
+
+**Fordel**: Lær avansert Terraform, ingen downtime
+**Ulempe**: Krever mer forståelse
+
+---
+
+**Velg din vei**, og fortsett til Del B når du er klar!
+
+---
+
+### Del B: Bruk modulen
+
+Nå skal du refaktorere root `main.tf` til å bruke modulen du nettopp laget.
 
 #### Din oppgave:
 
-1. **I root `main.tf`**: Erstatt alle S3-ressursene med et module-kall:
+1. **I root `main.tf`**: Erstatt alle S3-ressursene med et modul-kall:
 
 ```hcl
 module "s3_website" {
@@ -444,7 +541,7 @@ output "bucket_name" {
 3. **Test konfigurasjonen**:
 
 ```bash
-terraform init  # Re-initialize for module
+terraform init  # Re-initialiser for modulen
 terraform plan
 terraform apply
 ```
@@ -466,7 +563,7 @@ resource "aws_s3_bucket_versioning" "website" {
 
 ---
 
-## Del 3: CloudFront CDN - Minimal Setup (20 min)
+## Del 3: CloudFront CDN - Minimal Setup
 
 ### Hvorfor CloudFront?
 
@@ -489,27 +586,24 @@ CloudFront løser alt dette, og krever overraskende lite kode!
 resource "aws_cloudfront_distribution" "website" {
   enabled             = true
   default_root_object = "index.html"
-  comment             = "CDN for ${var.bucket_name}"
 
-  # Origin - where CloudFront fetches content from
   origin {
     domain_name = aws_s3_bucket_website_configuration.website.website_endpoint
     origin_id   = "S3-${var.bucket_name}"
 
     custom_origin_config {
+      origin_protocol_policy = "http-only"
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
 
-  # Default cache behavior
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "S3-${var.bucket_name}"
     viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
 
     forwarded_values {
       query_string = false
@@ -519,30 +613,19 @@ resource "aws_cloudfront_distribution" "website" {
     }
 
     min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
+    default_ttl = 0  # Instant refresh - ingen caching
+    max_ttl     = 0
   }
 
-  # Custom error response for SPA routing
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
-  # Required: Restrictions (none in this case)
   restrictions {
     geo_restriction {
       restriction_type = "none"
     }
   }
 
-  # Required: SSL certificate (use CloudFront default)
   viewer_certificate {
     cloudfront_default_certificate = true
   }
-
-  tags = var.tags
 }
 ```
 
@@ -595,7 +678,7 @@ terraform output cloudfront_url
 
 ---
 
-## Del 4: GitHub Actions CI/CD Pipeline (20-30 min)
+## Del 4: GitHub Actions CI/CD Pipeline
 
 ### Mål
 
@@ -744,14 +827,32 @@ git push origin test-pipeline
 
 ## Bonusoppgaver
 
-### 1. Custom Domain (hvis du har et domene)
+### 1. Custom Domain med Data Sources
 
-Legg til Route53 DNS:
+#### Hva er Data Sources?
+
+Så langt har vi kun brukt `resource` blokker som **oppretter** nye ressurser i AWS. Men hva hvis vi vil bruke noe som allerede eksisterer? Det er her `data` sources kommer inn.
+
+**Data sources** lar deg **lese** informasjon om eksisterende ressurser uten å endre dem. Tenk på det som:
+- `resource` = "Opprett dette" (write)
+- `data` = "Hent info om dette" (read-only)
+
+#### Bruk av eksisterende Hosted Zone
+
+Vi har en delt Route53 hosted zone for domenet `thecloudcollege.com` som du kan bruke. I stedet for å opprette en ny hosted zone, skal vi **hente** den eksisterende med en data source.
+
+**Legg til i `modules/s3-website/main.tf`**:
 
 ```hcl
+# Data source - henter informasjon om en eksisterende hosted zone
+data "aws_route53_zone" "main" {
+  zone_id = "Z09151061LZNRB9E4BYEL"  # thecloudcollege.com
+}
+
+# Resource - oppretter en ny DNS-record i den eksisterende zonen
 resource "aws_route53_record" "website" {
-  zone_id = var.hosted_zone_id
-  name    = var.domain_name
+  zone_id = data.aws_route53_zone.main.zone_id  # Bruker data fra data source
+  name    = "${var.student_name}.thecloudcollege.com"
   type    = "A"
 
   alias {
@@ -762,7 +863,56 @@ resource "aws_route53_record" "website" {
 }
 ```
 
-### 2. Validation Rules på Module Variables
+**Legg til variabel i `modules/s3-website/variables.tf`**:
+
+```hcl
+variable "student_name" {
+  description = "Your name for the subdomain (e.g., 'glenn' becomes glenn.thecloudcollege.com)"
+  type        = string
+}
+```
+
+**Oppdater modul-kallet i root `main.tf`**:
+
+```hcl
+module "s3_website" {
+  source = "./modules/s3-website"
+
+  bucket_name         = "ditt-bucket-navn"
+  website_files_path  = "${path.root}/s3_demo_website"
+  student_name        = "ditt-navn"  # Endre til ditt navn
+
+  tags = {
+    Name        = "My Website"
+    Environment = "Demo"
+  }
+}
+```
+
+**Legg til output i `modules/s3-website/outputs.tf`**:
+
+```hcl
+output "custom_domain_url" {
+  description = "Your custom domain URL"
+  value       = "https://${var.student_name}.thecloudcollege.com"
+}
+```
+
+**Deploy**:
+
+```bash
+terraform apply
+```
+
+Vent noen minutter på DNS-propagering, og din side vil være tilgjengelig på `https://ditt-navn.thecloudcollege.com`!
+
+**Nøkkelpunkter**:
+- **Data source** (`data "aws_route53_zone"`) henter info om eksisterende hosted zone
+- **Resource** (`aws_route53_record`) oppretter en ny DNS-record
+- Data sources refereres med `data.<type>.<name>`, f.eks. `data.aws_route53_zone.main.zone_id`
+- Du kan ikke endre en data source - den er read-only
+
+### 2. Validation Rules på variabler i modulen
 
 Legg til validation i `modules/s3-website/variables.tf`:
 
@@ -780,7 +930,7 @@ variable "bucket_name" {
 
 ### 3. Multi-Environment Setup
 
-Bruk samme module for dev og prod:
+Bruk samme modul for dev og prod:
 
 ```hcl
 module "dev_website" {
@@ -802,12 +952,12 @@ module "prod_website" {
 
 Du har nå lært:
 
-✅ **Remote State Management**: State deling i team og CI/CD
-✅ **Terraform Modules**: Gjenbrukbar, DRY infrastruktur-kode
-✅ **CloudFront CDN**: Global distribusjon med HTTPS, minimal kode
-✅ **GitHub Actions**: Automatisk testing og deployment av infrastruktur
+- **Remote State Management**: State deling i team og CI/CD
+- **Terraform-moduler**: Gjenbrukbar, DRY infrastruktur-kode
+- **CloudFront CDN**: Global distribusjon med HTTPS, minimal kode
+- **GitHub Actions**: Automatisk testing og deployment av infrastruktur
 
-**Neste steg**: Utforsk Terraform Registry for community modules, eller bygg dine egne komplekse modules!
+**Neste steg**: Utforsk Terraform Registry for community-moduler, eller bygg dine egne komplekse moduler!
 
 ---
 
