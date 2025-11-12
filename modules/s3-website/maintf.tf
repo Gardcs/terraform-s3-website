@@ -1,24 +1,3 @@
-# Legg til i main.tf FØR du sletter de gamle ressursene
-moved {
-  from = aws_s3_bucket.website
-  to   = module.s3_website.aws_s3_bucket.website
-}
-
-moved {
-  from = aws_s3_bucket_website_configuration.website
-  to   = module.s3_website.aws_s3_bucket_website_configuration.website
-}
-
-moved {
-  from = aws_s3_bucket_public_access_block.website
-  to   = module.s3_website.aws_s3_bucket_public_access_block.website
-}
-
-moved {
-  from = aws_s3_bucket_policy.website
-  to   = module.s3_website.aws_s3_bucket_policy.website
-}
-
 
 resource "aws_s3_bucket" "website" {
   bucket = var.bucket_name 
