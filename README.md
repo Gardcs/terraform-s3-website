@@ -1,7 +1,26 @@
 # Terraform med AWS S3 og statiske websider
 
-## Mål
-Deploy en statisk nettside på AWS S3 ved hjelp av Terraform. Denne øvelsen dekker bruk av moduler fra Terraform Registry, håndtering av ressurser med AWS CLI, samt bruk av variabler og outputs i Terraform.
+## Oppgaven
+
+I denne øvelsen skal du hoste en React-applikasjon som viser kryptovaluta-informasjon på en morsom og interaktiv måte. Applikasjonen er allerede bygget og klar til å deployes - din jobb er å lære hvordan man bruker Terraform for å sette opp infrastrukturen for å hoste den på AWS.
+
+Du vil bruke **Infrastructure as Code (IaC)** for å automatisere hele prosessen med å sette opp:
+- En S3 bucket for å hoste nettsiden
+- CloudFront CDN for global distribusjon og HTTPS
+- DNS-konfigurasjon for custom domenenavn
+- CI/CD pipeline for automatisk deployment
+
+## Du vil lære
+
+Gjennom denne øvelsen vil du mestre:
+
+- **Terraform grunnleggende**: Ressurser, variabler, outputs og state management
+- **AWS S3 Website Hosting**: Konfigurasjon av S3 buckets for statiske nettsider
+- **CloudFront CDN**: Global distribusjon med HTTPS og caching
+- **Terraform-moduler**: Bygge gjenbrukbar infrastruktur-kode
+- **Remote State**: Håndtere Terraform state i team-miljøer
+- **CI/CD med GitHub Actions**: Automatisere infrastruktur-deployment
+- **Infrastructure as Code**: Best practices for å versjonere og administrere infrastruktur
 
 ## Forberedelser
 
@@ -11,7 +30,9 @@ Deploy en statisk nettside på AWS S3 ved hjelp av Terraform. Denne øvelsen dek
 2. **Åpne Codespace**: Klikk på "Code" → "Codespaces" → "Create codespace on main"
 3. **Vent på at Codespace starter**: Dette kan ta et par minutter første gang
 4. **Terminalvindu**: Du vil utføre de fleste kommandoer i terminalen som åpner seg nederst i Codespace
-5. **AWS Credentials**. Kjør `aws configure` og legg inn AWS aksessnøkler. 
+5. **AWS Credentials**. Kjør `aws configure` og legg inn AWS aksessnøkler.
+
+**💡 Ekspert tips**: Trykk `.` (punktum) når du er i et GitHub repository for å åpne det direkte i en nettleser-basert VS Code editor. Dette er raskere enn å starte en full Codespace og perfekt for raske editeringer! 
 
 
 ### Steg 1: Verifiser miljøet
@@ -32,11 +53,16 @@ Nå skal du bygge opp Terraform-konfigurasjonen fra bunnen av. Du vil lære om d
 1. **Opprett `main.tf`** i rotmappen av prosjektet
 
 2. **Opprett S3 bucket-ressursen** med et hardkodet bucket-navn (erstatt `<unikt-bucket-navn>` med ditt eget unike navn, f.eks. dine initialer eller studentnummer):
-Det er ganske strenge regler for navn for buckets! https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
+
+**Viktig om bucket-navn:**
+- S3 bucket-navn må være **globalt unike** på tvers av alle AWS-kontoer i hele verden
+- Hvis noen andre allerede bruker navnet "my-website", kan du ikke bruke det samme navnet
+- Bruk derfor noe unikt som dine initialer, studentnummer, eller en kombinasjon: `glennbech-pgr301-website`
+- Det er også strenge regler for formatet: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
 
 ```hcl
 resource "aws_s3_bucket" "website" {
-  bucket = "unikt-bucket-navn"
+  bucket = "unikt-bucket-navn"  # Bytt til noe globalt unikt
 }
 ```
 
@@ -110,23 +136,51 @@ terraform init
 terraform apply
 ```
 
-**Merk**: Hvis du får en feilmelding om `AccessDenied` ved `PutBucketPolicy`, prøv kommandoen på nytt. Spør instruktør hvis du er nysgjerrig på hvorfor dette skjer.
-**Viktig**: Pass på at du ikke får feilneldinger etter apply før du går videre.
+### Steg 4: Bygg React-applikasjonen
 
-### Steg 4: Last opp filer til S3
+Før vi kan laste opp nettsiden til S3, må vi bygge React-applikasjonen. Dette kompilerer TypeScript-koden og optimaliserer alle assets for produksjon.
 
-
-Bruk AWS CLI for å laste opp nettsidefilene til S3 bucketen:
+1. **Naviger til applikasjonsmappen**:
 
 ```bash
-aws s3 sync s3_demo_website s3://unikt-bucket-navn
+cd s3_demo_website
 ```
 
-### Steg 5: Inspiser bucketen i AWS Console
+2. **Installer dependencies** (hvis ikke allerede gjort):
+
+```bash
+npm install
+```
+
+3. **Bygg applikasjonen**:
+
+```bash
+npm run build
+```
+
+Dette vil opprette en `dist`-mappe med den ferdige produksjonsklare nettsiden.
+
+4. **Gå tilbake til rotmappen**:
+
+```bash
+cd ..
+```
+
+### Steg 5: Last opp filer til S3
+
+Nå kan vi laste opp den bygde nettsiden til S3 bucketen ved hjelp av AWS CLI:
+
+```bash
+aws s3 sync s3_demo_website/dist s3://unikt-bucket-navn
+```
+
+Legg merke til at vi synkroniserer `dist`-mappen, ikke hele `s3_demo_website`-mappen. `dist`-mappen inneholder kun de optimaliserte filene som trengs for produksjon.
+
+### Steg 6: Inspiser bucketen i AWS Console
 
 Gå til AWS Console, og tjenesten S3, og se på objekter og bucket-egenskaper for å forstå hvordan alt er satt opp.
 
-### Steg 6: Åpne nettsiden
+### Steg 7: Åpne nettsiden
 
 Hent URL-en til nettsiden:
 
@@ -136,7 +190,7 @@ terraform output s3_website_url
 
 Åpne URL-en i nettleseren for å se din statiske nettside.
 
-### Steg 7: Refaktorer til å bruke variabler
+### Steg 8: Refaktorer til å bruke variabler
 
 Nå som du har fått infrastrukturen til å fungere med hardkodet bucket-navn, skal vi gjøre konfigurasjonen mer fleksibel ved å introdusere variabler.
 
