@@ -50,9 +50,41 @@ Du skal se filene fra dette repositoriet, inkludert mappen `s3_demo_website`.
 
 Nå skal du bygge opp Terraform-konfigurasjonen fra bunnen av. Du vil lære om de ulike AWS S3-ressursene som trengs for å hoste en statisk nettside.
 
-1. **Opprett `main.tf`** i rotmappen av prosjektet
+1. **Opprett `providers.tf`** i rotmappen av prosjektet:
 
-2. **Opprett S3 bucket-ressursen** med et hardkodet bucket-navn (erstatt `<unikt-bucket-navn>` med ditt eget unike navn, f.eks. dine initialer eller studentnummer):
+```hcl
+terraform {
+  required_version = ">= 1.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "eu-west-1"
+}
+
+# Alias provider for us-east-1
+# Nødvendig for CloudFront ACM-sertifikater senere i oppgaven
+provider "aws" {
+  alias  = "us-east-1"
+  region = "us-east-1"
+}
+```
+
+**Forklaring:**
+- `required_version` sikrer at Terraform-versjonen er minst 1.0
+- `required_providers` spesifiserer AWS provider versjon (~> 5.0 betyr versjon 5.x)
+- Default provider bruker `eu-west-1`
+- Aliased provider for `us-east-1` vil brukes senere for ACM-sertifikater (se [Appendix A](#appendix-a-provider-configuration-i-moduler))
+
+2. **Opprett `main.tf`** i rotmappen av prosjektet
+
+3. **Opprett S3 bucket-ressursen** med et hardkodet bucket-navn (erstatt `<unikt-bucket-navn>` med ditt eget unike navn, f.eks. dine initialer eller studentnummer):
 
 **Viktig om bucket-navn:**
 - S3 bucket-navn må være **globalt unike** på tvers av alle AWS-kontoer i hele verden
@@ -66,7 +98,7 @@ resource "aws_s3_bucket" "website" {
 }
 ```
 
-3. **Konfigurer S3 bucket for website hosting**:
+4. **Konfigurer S3 bucket for website hosting**:
 
 ```hcl
 resource "aws_s3_bucket_website_configuration" "website" {
@@ -82,7 +114,7 @@ resource "aws_s3_bucket_website_configuration" "website" {
 }
 ```
 
-4. **Åpne bucketen for offentlig tilgang** (nødvendig for static websites):
+5. **Åpne bucketen for offentlig tilgang** (nødvendig for static websites):
 
 ```hcl
 resource "aws_s3_bucket_public_access_block" "website" {
@@ -95,7 +127,7 @@ resource "aws_s3_bucket_public_access_block" "website" {
 }
 ```
 
-5. **Legg til en bucket policy som tillater offentlig lesing**:
+6. **Legg til en bucket policy som tillater offentlig lesing**:
 
 ```hcl
 resource "aws_s3_bucket_policy" "website" {
@@ -118,7 +150,7 @@ resource "aws_s3_bucket_policy" "website" {
 }
 ```
 
-6. **Legg til en output for å få URL-en til nettsiden**:
+7. **Legg til en output for å få URL-en til nettsiden**:
 
 ```hcl
 output "s3_website_url" {
@@ -1057,39 +1089,7 @@ data "aws_route53_zone" "main" {
 }
 ```
 
-#### Steg 2: Konfigurer AWS provider med alias for us-east-1
-
-CloudFront krever at SSL-sertifikater ligger i `us-east-1` regionen, uansett hvor CloudFront distribusjonen selv er. Dette er en AWS-begrensning.
-
-**Ekspert tips**: Hvorfor må CloudFront-sertifikater ligge i us-east-1?
-- CloudFront er en **global** tjeneste (ikke region-spesifikk)
-- AWS bruker us-east-1 som sin "globale" region for slike tjenester
-- Historisk sett var us-east-1 AWSs første region, og mange globale tjenester ble designet med denne som standard
-- Dette gjelder kun CloudFront - andre tjenester som ALB kan bruke ACM-sertifikater fra hvilken som helst region
-
-For å hente sertifikatet fra us-east-1, må vi sette opp en provider alias. Dette gjøres **kun én gang** i rot-nivå.
-
-**Opprett eller oppdater `providers.tf` i rotmappen**:
-
-```hcl
-# Default AWS provider - din primære region
-provider "aws" {
-  region = "eu-west-1"  # Eller din foretrukne region
-}
-
-# Alias provider for us-east-1
-# Nødvendig fordi CloudFront krever ACM-sertifikater i us-east-1
-provider "aws" {
-  alias  = "us-east-1"
-  region = "us-east-1"
-}
-```
-
-**Forklaring**: Dette oppretter to AWS provider-konfigurasjoner:
-- Den første (uten alias) er default og brukes for alle ressurser
-- Den andre (med `alias = "us-east-1"`) brukes kun når vi eksplisitt spesifiserer `provider = aws.us-east-1` på en ressurs
-
-#### Steg 3: Hent wildcard ACM-sertifikat fra us-east-1
+#### Steg 2: Hent wildcard ACM-sertifikat fra us-east-1
 
 Vi har et wildcard-sertifikat (`*.thecloudcollege.com`) i `us-east-1` som dekker alle subdomener.
 
@@ -1105,7 +1105,7 @@ data "aws_acm_certificate" "wildcard" {
 }
 ```
 
-#### Steg 4: Oppdater CloudFront til å bruke custom domain
+#### Steg 3: Oppdater CloudFront til å bruke custom domain
 
 Nå må CloudFront konfigureres til å akseptere requests fra ditt custom domain og bruke ACM-sertifikatet for HTTPS.
 
@@ -1133,7 +1133,7 @@ resource "aws_cloudfront_distribution" "website" {
   }
 ```
 
-#### Steg 5: Opprett DNS-record
+#### Steg 4: Opprett DNS-record
 
 **Legg til Route53 record** i `modules/s3-website/main.tf`:
 
@@ -1152,7 +1152,7 @@ resource "aws_route53_record" "website" {
 }
 ```
 
-#### Steg 6: Legg til subdomain-variabel
+#### Steg 5: Legg til subdomain-variabel
 
 **Legg til i `modules/s3-website/variables.tf`**:
 
@@ -1180,13 +1180,19 @@ module "s3_website" {
 }
 ```
 
-#### Steg 7: Oppdater modul-kallet og outputs
+#### Steg 6: Oppdater modul-kallet og outputs
 
-**Oppdater modul-kallet i rot `main.tf`** for å inkludere subdomain:
+**Oppdater modul-kallet i rot `main.tf`** for å inkludere subdomain og sende providers til modulen (se [Appendix A](#appendix-a-provider-configuration-i-moduler) for detaljer):
 
 ```hcl
 module "s3_website" {
   source = "./modules/s3-website"
+
+  # Send begge providers til modulen
+  providers = {
+    aws           = aws
+    aws.us-east-1 = aws.us-east-1
+  }
 
   bucket_name         = "ditt-bucket-navn"
   website_files_path  = "${path.root}/s3_demo_website/dist"
@@ -1217,7 +1223,21 @@ output "custom_domain_url" {
 }
 ```
 
-#### Steg 8: Deploy og test
+**Opprett `modules/s3-website/versions.tf`** for å deklarere forventede providers:
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+      configuration_aliases = [aws.us-east-1]
+    }
+  }
+}
+```
+
+#### Steg 7: Deploy og test
 
 1. **Re-initialiser Terraform** (nødvendig pga. ny provider):
 
