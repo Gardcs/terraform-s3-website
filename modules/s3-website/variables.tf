@@ -42,7 +42,7 @@ output "cloudfront_domain" {
   value       = aws_cloudfront_distribution.website.domain_name
 }   
 
-variable "student_name" {
+variable "subdomain" {
   description = "Your name for the subdomain (e.g., 'glenn' becomes glenn.thecloudcollege.com)"
   type        = string
   default     = "glenn"
