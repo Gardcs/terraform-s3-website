@@ -44,13 +44,56 @@ resource "aws_s3_bucket_policy" "website" {
   depends_on = [aws_s3_bucket_public_access_block.website]
 }
 
+# ============================================
+# CloudFront Distribution for Global CDN
+# ============================================
+
+resource "aws_cloudfront_distribution" "website" {
+  enabled             = true
+  default_root_object = "index.html"
+
+  origin {
+    domain_name = aws_s3_bucket_website_configuration.website.website_endpoint
+    origin_id   = "S3-${var.bucket_name}"
+
+    custom_origin_config {
+      origin_protocol_policy = "http-only"
+      http_port              = 80
+      https_port             = 443
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "S3-${var.bucket_name}"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0  # Instant refresh - ingen caching
+    max_ttl     = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
 output "s3_website_url" {
   value = "http://${aws_s3_bucket.website.bucket}.s3-website.${aws_s3_bucket.website.region}.amazonaws.com"
   description = "URL for the S3 hosted website"
-}
-
-variable "bucket_name" {
-  description = "The name of the S3 bucket"
-  type        = string
-  default = "pgr301-practice-run-1"
 }
