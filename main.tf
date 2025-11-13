@@ -26,6 +26,7 @@ module "s3_website" {
   # subdomain   = var.subdomain
 }
 
+
 output "cloudfront_url" {
   value       = module.s3_website.cloudfront_url
   description = "CloudFront URL with HTTPS"
