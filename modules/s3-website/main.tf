@@ -3,6 +3,7 @@ resource "aws_s3_bucket" "website" {
   tags = {
     owner = "g25gcs"
     PipelineTest = "true"
+    master = "true"
   }
 }
 
