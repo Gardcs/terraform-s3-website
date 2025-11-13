@@ -18,6 +18,7 @@ resource "aws_s3_bucket_website_configuration" "website" {
   }
 }
 
+
 resource "aws_s3_bucket_public_access_block" "website" {
   bucket = aws_s3_bucket.website.id
 
